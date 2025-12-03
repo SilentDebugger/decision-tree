@@ -231,6 +231,26 @@ export function useFlowGraph() {
     }
   }, [setNodes, setEdges, selectedNodeId]);
 
+  // Delete multiple nodes and their connected edges
+  const deleteNodes = useCallback((nodeIds: string[]) => {
+    const idsSet = new Set(nodeIds);
+    setNodes((nds) => nds.filter((node) => !idsSet.has(node.id)));
+    setEdges((eds) => eds.filter((edge) => !idsSet.has(edge.source) && !idsSet.has(edge.target)));
+    if (selectedNodeId && idsSet.has(selectedNodeId)) {
+      setSelectedNodeId(null);
+    }
+  }, [setNodes, setEdges, selectedNodeId]);
+
+  // Delete all selected nodes
+  const deleteSelectedNodes = useCallback(() => {
+    const selectedIds = nodes.filter((n) => n.selected).map((n) => n.id);
+    if (selectedIds.length > 0) {
+      deleteNodes(selectedIds);
+      return true;
+    }
+    return false;
+  }, [nodes, deleteNodes]);
+
   // Delete an edge
   const deleteEdge = useCallback((edgeId: string) => {
     setEdges((eds) => eds.filter((edge) => edge.id !== edgeId));
@@ -327,6 +347,20 @@ export function useFlowGraph() {
     setSimulationState((prev) => ({ ...prev, [condition]: value }));
   }, []);
 
+  // Clear a simulation value (toggle off)
+  const clearSimulationValue = useCallback((condition: string) => {
+    setSimulationState((prev) => {
+      const next = { ...prev };
+      delete next[condition];
+      return next;
+    });
+  }, []);
+
+  // Manual save (triggers the auto-save effect)
+  const saveGraph = useCallback(() => {
+    saveToStorage(nodes, edges);
+  }, [nodes, edges]);
+
   // Toggle simulation mode
   const toggleSimulation = useCallback(() => {
     setIsSimulating((prev) => !prev);
@@ -386,6 +420,8 @@ export function useFlowGraph() {
     addChildNode,
     updateNodeData,
     deleteNode,
+    deleteNodes,
+    deleteSelectedNodes,
     selectNode,
     
     // Edge operations
@@ -402,8 +438,12 @@ export function useFlowGraph() {
     
     // Simulation operations
     updateSimulationValue,
+    clearSimulationValue,
     toggleSimulation,
     resetSimulation,
+    
+    // Save operations
+    saveGraph,
     
     // Trace mode operations
     toggleTraceMode,

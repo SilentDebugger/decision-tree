@@ -1,4 +1,4 @@
-import { useCallback, useRef, useMemo } from 'react';
+import { useCallback, useRef, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Background,
@@ -12,6 +12,46 @@ import {
 } from '@xyflow/react';
 import type { NodeTypes, EdgeTypes, Edge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+
+// Context menu component
+interface ContextMenuProps {
+  x: number;
+  y: number;
+  onCreateFeature: () => void;
+  onClose: () => void;
+}
+
+function ContextMenu({ x, y, onCreateFeature, onClose }: ContextMenuProps) {
+  return (
+    <>
+      {/* Backdrop to catch clicks outside */}
+      <div 
+        className="fixed inset-0 z-40" 
+        onClick={onClose}
+      />
+      {/* Menu */}
+      <div
+        className="fixed z-50 min-w-[160px] py-1.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-secondary)] shadow-xl shadow-black/20 backdrop-blur-sm"
+        style={{ left: x, top: y }}
+      >
+        <button
+          onClick={() => {
+            onCreateFeature();
+            onClose();
+          }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-colors text-left"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <line x1="12" y1="8" x2="12" y2="16" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+          <span>New Feature</span>
+        </button>
+      </div>
+    </>
+  );
+}
 
 import FeatureNode from './FeatureNode';
 import Toolbar from './Toolbar';
@@ -135,15 +175,19 @@ function FlowCanvas() {
     addChildNode,
     updateNodeData,
     deleteNode,
+    deleteSelectedNodes,
     deleteEdge,
     selectNode,
     selectEdge,
     addRuleToEdge,
+    updateRule,
     removeRule,
     getValuesForCondition,
     updateSimulationValue,
+    clearSimulationValue,
     toggleSimulation,
     resetSimulation,
+    saveGraph,
     toggleTraceMode,
     setHoveredNodeId,
     exportGraph,
@@ -153,6 +197,12 @@ function FlowCanvas() {
 
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const { screenToFlowPosition } = useReactFlow();
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; flowPosition: { x: number; y: number } } | null>(null);
+  
+  // Track connection source for drag-to-create
+  const connectingNodeId = useRef<string | null>(null);
 
   // Memoize context value to prevent unnecessary re-renders
   const flowContextValue = useMemo(() => ({
@@ -191,6 +241,34 @@ function FlowCanvas() {
     addNode('New Feature', position);
   }, [screenToFlowPosition, addNode]);
 
+  // Track when a connection drag starts
+  const handleConnectStart = useCallback((_: unknown, params: { nodeId: string | null }) => {
+    connectingNodeId.current = params.nodeId;
+  }, []);
+
+  // Create a new node when dragging connection to empty space
+  const handleConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
+    if (!connectingNodeId.current) return;
+
+    const targetIsPane = (event.target as Element).classList.contains('react-flow__pane');
+    
+    if (targetIsPane) {
+      // Get the position from the event
+      const clientX = 'clientX' in event ? event.clientX : event.touches[0].clientX;
+      const clientY = 'clientY' in event ? event.clientY : event.touches[0].clientY;
+      
+      const position = screenToFlowPosition({
+        x: clientX,
+        y: clientY,
+      });
+      
+      // Create new node connected to the source
+      addNode('New Feature', position, connectingNodeId.current);
+    }
+    
+    connectingNodeId.current = null;
+  }, [screenToFlowPosition, addNode]);
+
   // Add root node from toolbar (center of viewport)
   const handleAddRootNode = useCallback(() => {
     if (reactFlowWrapper.current) {
@@ -214,10 +292,15 @@ function FlowCanvas() {
     
     // Delete selected elements
     if (event.key === 'Delete' || event.key === 'Backspace') {
-      if (selectedNodeId) {
-        deleteNode(selectedNodeId);
-      } else if (selectedEdgeId) {
-        deleteEdge(selectedEdgeId);
+      // First try to delete multi-selected nodes
+      const deletedMultiple = deleteSelectedNodes();
+      if (!deletedMultiple) {
+        // Fall back to single selection
+        if (selectedNodeId) {
+          deleteNode(selectedNodeId);
+        } else if (selectedEdgeId) {
+          deleteEdge(selectedEdgeId);
+        }
       }
     }
     // Escape to deselect
@@ -225,13 +308,36 @@ function FlowCanvas() {
       selectNode(null);
       selectEdge(null);
     }
-  }, [selectedNodeId, selectedEdgeId, deleteNode, deleteEdge, selectNode, selectEdge]);
+  }, [selectedNodeId, selectedEdgeId, deleteNode, deleteSelectedNodes, deleteEdge, selectNode, selectEdge]);
 
-  // Handle clicking on pane to deselect
-  const handlePaneClick = useCallback(() => {
+  // Handle clicking on pane to open context menu
+  const handlePaneClick = useCallback((event: React.MouseEvent) => {
     selectNode(null);
     selectEdge(null);
-  }, [selectNode, selectEdge]);
+    
+    // Open context menu at click position
+    const flowPosition = screenToFlowPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      flowPosition,
+    });
+  }, [selectNode, selectEdge, screenToFlowPosition]);
+
+  // Close context menu
+  const handleCloseContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Create feature from context menu
+  const handleCreateFeatureFromMenu = useCallback(() => {
+    if (contextMenu) {
+      addNode('New Feature', contextMenu.flowPosition);
+    }
+  }, [contextMenu, addNode]);
 
   // Handle edge click
   const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
@@ -256,6 +362,8 @@ function FlowCanvas() {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onConnectStart={handleConnectStart}
+          onConnectEnd={handleConnectEnd}
           onPaneClick={handlePaneClick}
           onDoubleClick={handlePaneDoubleClick}
           onEdgeClick={handleEdgeClick}
@@ -314,6 +422,7 @@ function FlowCanvas() {
           onAddRootNode={handleAddRootNode}
           onExport={exportGraph}
           onImport={importGraph}
+          onSave={saveGraph}
           onClear={clearGraph}
           hasNodes={nodes.length > 0}
         />
@@ -324,6 +433,7 @@ function FlowCanvas() {
           isActive={isSimulating}
           onToggle={toggleSimulation}
           onUpdateValue={updateSimulationValue}
+          onClearValue={clearSimulationValue}
           onReset={resetSimulation}
         />
 
@@ -368,6 +478,7 @@ function FlowCanvas() {
             getValuesForCondition={getValuesForCondition}
             onClose={() => selectEdge(null)}
             onAddRule={addRuleToEdge}
+            onUpdateRule={updateRule}
             onRemoveRule={removeRule}
             onDeleteEdge={deleteEdge}
           />
@@ -381,10 +492,20 @@ function FlowCanvas() {
                 No features yet
               </div>
               <div className="text-[var(--text-secondary)] text-sm">
-                Click <span className="text-[var(--accent)] font-medium">+ Add Feature</span> or double-click anywhere to start
+                Click <span className="text-[var(--accent)] font-medium">+ Add Feature</span> or click anywhere to start
               </div>
             </div>
           </div>
+        )}
+
+        {/* Context Menu */}
+        {contextMenu && (
+          <ContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            onCreateFeature={handleCreateFeatureFromMenu}
+            onClose={handleCloseContextMenu}
+          />
         )}
       </div>
     </FlowContext.Provider>

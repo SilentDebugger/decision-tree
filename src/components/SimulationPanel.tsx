@@ -7,6 +7,7 @@ interface SimulationPanelProps {
   isActive: boolean;
   onToggle: () => void;
   onUpdateValue: (condition: string, value: string | number | boolean) => void;
+  onClearValue: (condition: string) => void;
   onReset: () => void;
 }
 
@@ -16,6 +17,7 @@ export default function SimulationPanel({
   isActive,
   onToggle,
   onUpdateValue,
+  onClearValue,
   onReset,
 }: SimulationPanelProps) {
   const handleValueChange = useCallback((
@@ -23,6 +25,12 @@ export default function SimulationPanel({
     rawValue: string,
     type: ConditionSchema['type']
   ) => {
+    // Handle empty/reset selection
+    if (rawValue === '') {
+      onClearValue(condition);
+      return;
+    }
+    
     let parsedValue: string | number | boolean = rawValue;
     
     if (type === 'boolean') {
@@ -32,7 +40,16 @@ export default function SimulationPanel({
     }
     
     onUpdateValue(condition, parsedValue);
-  }, [onUpdateValue]);
+  }, [onUpdateValue, onClearValue]);
+
+  // Toggle a boolean value - if already selected, clear it
+  const handleBooleanToggle = useCallback((condition: string, value: boolean) => {
+    if (state[condition] === value) {
+      onClearValue(condition);
+    } else {
+      onUpdateValue(condition, value);
+    }
+  }, [state, onUpdateValue, onClearValue]);
 
   if (conditions.length === 0) {
     return (
@@ -96,7 +113,7 @@ export default function SimulationPanel({
               {condition.type === 'boolean' ? (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => onUpdateValue(condition.name, true)}
+                    onClick={() => handleBooleanToggle(condition.name, true)}
                     className={`
                       flex-1 px-2 py-1.5 rounded text-xs font-medium
                       transition-colors
@@ -109,7 +126,7 @@ export default function SimulationPanel({
                     true
                   </button>
                   <button
-                    onClick={() => onUpdateValue(condition.name, false)}
+                    onClick={() => handleBooleanToggle(condition.name, false)}
                     className={`
                       flex-1 px-2 py-1.5 rounded text-xs font-medium
                       transition-colors

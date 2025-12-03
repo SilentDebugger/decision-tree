@@ -9,6 +9,7 @@ export interface EdgeRule {
   condition: string;      // e.g., "role", "exam_state", "is_author"
   operator: RuleOperator;
   value: string | number | boolean;
+  groupId: string;        // Rules in same group are AND'd; groups are OR'd
 }
 
 // Base data stored in each node
@@ -63,6 +64,19 @@ export function ruleToText(rule: EdgeRule): string {
   return `${rule.condition} ${opText} ${valueText}`;
 }
 
+// Group rules by groupId for display
+export function groupRules(rules: EdgeRule[]): Map<string, EdgeRule[]> {
+  const groups = new Map<string, EdgeRule[]>();
+  for (const rule of rules) {
+    const groupId = rule.groupId || 'default';
+    if (!groups.has(groupId)) {
+      groups.set(groupId, []);
+    }
+    groups.get(groupId)!.push(rule);
+  }
+  return groups;
+}
+
 // Check if a single rule passes
 export function evaluateRule(rule: EdgeRule, state: SimulationState): boolean {
   const currentValue = state[rule.condition];
@@ -84,11 +98,29 @@ export function evaluateRule(rule: EdgeRule, state: SimulationState): boolean {
   }
 }
 
-// Check if all rules on an edge pass (just the rules, not flow)
+// Check if rules on an edge pass (groups are OR'd, rules within groups are AND'd)
 export function evaluateEdgeRules(edge: FeatureEdge, state: SimulationState): boolean {
   const rules = edge.data?.rules || [];
   if (rules.length === 0) return true; // No rules = always valid
-  return rules.every(rule => evaluateRule(rule, state));
+  
+  // Group rules by groupId
+  const groups = new Map<string, EdgeRule[]>();
+  for (const rule of rules) {
+    const groupId = rule.groupId || 'default';
+    if (!groups.has(groupId)) {
+      groups.set(groupId, []);
+    }
+    groups.get(groupId)!.push(rule);
+  }
+  
+  // OR between groups: at least one group must pass
+  // AND within groups: all rules in the group must pass
+  for (const groupRules of groups.values()) {
+    const groupPasses = groupRules.every(rule => evaluateRule(rule, state));
+    if (groupPasses) return true; // One group passing is enough (OR)
+  }
+  
+  return false; // No group passed
 }
 
 // Flow-based evaluation result

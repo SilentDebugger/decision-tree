@@ -6,11 +6,12 @@ interface ToolbarProps {
   onAddRootNode: () => void;
   onExport: () => FlowGraph;
   onImport: (graph: FlowGraph) => void;
+  onSave: () => void;
   onClear: () => void;
   hasNodes: boolean;
 }
 
-export default function Toolbar({ onAddRootNode, onExport, onImport, onClear, hasNodes }: ToolbarProps) {
+export default function Toolbar({ onAddRootNode, onExport, onImport, onSave, onClear, hasNodes }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = useCallback(() => {
@@ -98,6 +99,28 @@ export default function Toolbar({ onAddRootNode, onExport, onImport, onClear, ha
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
         <span className="hidden sm:inline">Import</span>
+      </button>
+
+      {/* Save */}
+      <button
+        onClick={onSave}
+        disabled={!hasNodes}
+        className="
+          flex items-center gap-1.5 px-3 py-1.5 rounded-lg
+          bg-[var(--bg-secondary)] border border-[var(--border-subtle)]
+          text-[var(--text-secondary)] text-sm
+          hover:text-[var(--text-primary)] hover:border-[var(--text-muted)]
+          disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-[var(--text-secondary)] disabled:hover:border-[var(--border-subtle)]
+          transition-colors
+        "
+        title="Save to browser (auto-saves, but click for peace of mind)"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+          <polyline points="17 21 17 13 7 13 7 21" />
+          <polyline points="7 3 7 8 15 8" />
+        </svg>
+        <span className="hidden sm:inline">Save</span>
       </button>
 
       {/* Export */}
